@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dangi Hardware</title>
+    
+    <!-- Tailwind CSS for Design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Custom Animation Styles -->
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+        /* Hide scrollbar for category list but keep functionality */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="font-sans text-slate-800 bg-slate-50 min-h-screen flex flex-col">
+
+    <!-- App Container -->
+    <div id="app" class="flex flex-col min-h-screen">
+        <!-- Content will be injected here by JavaScript -->
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- Configuration ---
+        const SHOP_PHONE_NUMBER = "917541849759";
+        const API_KEY = ""; // Add Gemini API Key here if needed
+
+        // --- Initial Data ---
+        const INITIAL_PRODUCTS = [
+            { id: 1, name: "Proclaw Hammer 16oz", category: "Tools", price: 350.00, mrp: 500.00, stock: 15, description: "Durable steel claw hammer with ergonomic grip.", image: "https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?auto=format&fit=crop&q=80&w=400" },
+            { id: 2, name: "Cordless Drill 18V", category: "Power Tools", price: 4500.00, mrp: 6000.00, stock: 4, description: "High-torque drill with 2 batteries included.", image: "https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&q=80&w=400" },
+            { id: 3, name: "PVC Pipe 2-inch", category: "Plumbing", price: 250.00, mrp: 300.00, stock: 100, description: "Schedule 40 PVC pipe, sold per foot.", image: "" },
+            { id: 4, name: "LED Light Bulb 10W", category: "Electrical", price: 99.00, mrp: 150.00, stock: 50, description: "Warm white, energy saving bulb E26 base.", image: "" },
+            { id: 5, name: "Wrench Set (10pc)", category: "Tools", price: 1200.00, mrp: 1800.00, stock: 8, description: "Metric wrench set chrome vanadium.", image: "" },
+            { id: 6, name: "Exterior Paint (White)", category: "Paint", price: 2800.00, mrp: 3500.00, stock: 12, description: "Weather-resistant exterior latex paint, 1 gallon.", image: "https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&q=80&w=400" }
+        ];
+
+        const CATEGORIES = ["All", "Tools", "Power Tools", "Plumbing", "Electrical", "Paint", "Garden"];
+
+        // --- State Management ---
+        let state = {
+            products: JSON.parse(localStorage.getItem('hardware_catalogue')) || INITIAL_PRODUCTS,
+            cart: [],
+            viewMode: 'shop', // 'shop', 'admin', 'about'
+            searchTerm: "",
+            selectedCategory: "All",
+            isMobileMenuOpen: false,
+            isCartOpen: false,
+            isAdvisorOpen: false,
+            isEditing: false,
+            currentProduct: null,
+            notification: null,
+            isAdminAuthenticated: false,
+            showLoginModal: false
+        };
+
+        // --- Core Functions ---
+
+        function setState(newState) {
+            state = { ...state, ...newState };
+            if (newState.products) {
+                localStorage.setItem('hardware_catalogue', JSON.stringify(state.products));
+            }
+            render();
+        }
+
+        function notify(message, type = 'success') {
+            setState({ notification: { message, type } });
+            setTimeout(() => setState({ notification: null }), 3000);
+        }
+
+        function getCategoryIcon(cat) {
+            // Returns Lucide icon name string
+            switch (cat) {
+                case 'Tools': return 'hammer';
+                case 'Power Tools': return 'zap';
+                case 'Plumbing': return 'droplet';
+                case 'Electrical': return 'zap';
+                default: return 'package';
+            }
+        }
+
+        function calculateDiscount(price, mrp) {
+            if (!mrp || mrp <= price) return 0;
+            return Math.round(((mrp - price) / mrp) * 100);
+        }
+
+        // --- Action Handlers ---
+
+        function handleAddToCart(productId) {
+            const product = state.products.find(p => p.id === productId);
+            if (product) {
+                setState({ cart: [...state.cart, product] });
+                notify(`Added ${product.name} to cart`);
+            }
+        }
+
+        function handleRemoveFromCart(index) {
+            const newCart = [...state.cart];
+            newCart.splice(index, 1);
+            setState({ cart: newCart });
+        }
+
+        function handleCheckoutWhatsApp() {
+            if (state.cart.length === 0) return;
+            
+            const groupedItems = state.cart.reduce((acc, item) => {
+                acc[item.name] = (acc[item.name] || 0) + 1;
+                return acc;
+            }, {});
+
+            const total = state.cart.reduce((sum, item) => sum + item.price, 0);
+            
+            let message = "Hello! I would like to place an order from your Online Catalogue:%0A%0A";
+            
+            Object.keys(groupedItems).forEach((name, index) => {
+                const count = groupedItems[name];
+                const item = state.cart.find(p => p.name === name);
+                message += `${index + 1}. ${name} (Qty: ${count}) - ₹${(item.price * count).toFixed(2)}%0A`;
+            });
+
+            message += `%0A*Total Order Value: ₹${total.toFixed(2)}*`;
+            message += "%0A%0APlease confirm availability and delivery details.";
+
+            const whatsappUrl = `https://wa.me/${SHOP_PHONE_NUMBER}?text=${message}`;
+            window.open(whatsappUrl, '_blank');
+        }
+
+        function handleAdminClick() {
+            if (state.isAdminAuthenticated) {
+                setState({ viewMode: 'admin', isMobileMenuOpen: false });
+            } else {
+                setState({ showLoginModal: true, isMobileMenuOpen: false });
+            }
+        }
+
+        function handleLogin(pin) {
+            if (pin === "7070") {
+                setState({ isAdminAuthenticated: true, showLoginModal: false, viewMode: 'admin' });
+                notify("Welcome back, Admin!");
+            } else {
+                notify("Incorrect PIN", "error");
+            }
+        }
+
+        function handleSaveProduct(e) {
+            e.preventDefault();
+            const form = e.target;
+            const formData = new FormData(form);
+            
+            // Read image source from the preview image tag or input
+            const imagePreview = document.getElementById('preview-image-src');
+            const imageSrc = imagePreview ? imagePreview.src : "";
+            const imageInputUrl = formData.get('imageUrl');
+
+            const newProduct = {
+                id: state.currentProduct ? state.currentProduct.id : Date.now(),
+                name: formData.get('name'),
+                category: formData.get('category'),
+                price: parseFloat(formData.get('price')),
+                mrp: parseFloat(formData.get('mrp')) || parseFloat(formData.get('price')),
+                stock: parseInt(formData.get('stock')),
+                description: formData.get('description'),
+                image: imageInputUrl || imageSrc // URL input takes precedence if typed, otherwise uploaded
+            };
+
+            let updatedProducts;
+            if (state.currentProduct) {
+                updatedProducts = state.products.map(p => p.id === newProduct.id ? newProduct : p);
+                notify("Product updated successfully");
+            } else {
+                updatedProducts = [...state.products, newProduct];
+                notify("New product added");
+            }
+
+            setState({ products: updatedProducts, isEditing: false, currentProduct: null });
+        }
+
+        function handleDeleteProduct(id) {
+            if (confirm("Are you sure you want to remove this item?")) {
+                setState({ products: state.products.filter(p => p.id !== id) });
+                notify("Product removed", "error");
+            }
+        }
+
+        function handleImageUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                if(file.size > 1024 * 1024) {
+                    notify("Image too large (Max 1MB)", "error");
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // Update preview immediately
+                    const preview = document.getElementById('preview-image-div');
+                    preview.innerHTML = `<img id="preview-image-src" src="${e.target.result}" class="h-full w-full object-cover">`;
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // --- Render Functions (HTML Generators) ---
+
+        function Header() {
+            return `
+                <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-40">
+                    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                        <div class="flex items-center gap-2 cursor-pointer" onclick="setState({viewMode: 'shop'})">
+                            <i data-lucide="wrench" class="text-orange-500"></i>
+                            <span class="text-xl font-bold tracking-tight">Dangi <span class="text-orange-500">Hardware</span></span>
+                        </div>
+
+                        <!-- Desktop Nav -->
+                        <div class="hidden md:flex items-center gap-6">
+                            <button onclick="setState({viewMode: 'shop'})" class="flex items-center gap-2 text-sm font-medium transition-colors ${state.viewMode === 'shop' ? 'text-orange-400' : 'text-slate-400 hover:text-white'}">
+                                <i data-lucide="grid" size="18"></i> Shop
+                            </button>
+                            <button onclick="setState({viewMode: 'about'})" class="flex items-center gap-2 text-sm font-medium transition-colors ${state.viewMode === 'about' ? 'text-orange-400' : 'text-slate-400 hover:text-white'}">
+                                <i data-lucide="info" size="18"></i> About
+                            </button>
+                            <button onclick="handleAdminClick()" class="flex items-center gap-2 text-sm font-medium transition-colors ${state.viewMode === 'admin' ? 'text-orange-400' : 'text-slate-400 hover:text-white'}">
+                                <i data-lucide="settings" size="18"></i> Admin
+                            </button>
+                            <div class="h-6 w-px bg-slate-700 mx-2"></div>
+                            <button onclick="setState({isCartOpen: true})" class="flex items-center gap-2 text-slate-300 hover:text-white transition-colors relative">
+                                <i data-lucide="shopping-cart" size="20"></i>
+                                ${state.cart.length > 0 ? `<span class="bg-orange-600 text-white text-xs font-bold px-2 py-0.5 rounded-full absolute -top-2 -right-2 animate-pulse">${state.cart.length}</span>` : ''}
+                            </button>
+                        </div>
+
+                        <!-- Mobile Menu Button -->
+                        <div class="md:hidden flex items-center gap-4">
+                            <button onclick="setState({isCartOpen: true})" class="text-slate-300 relative">
+                                <i data-lucide="shopping-cart" size="20"></i>
+                                ${state.cart.length > 0 ? `<span class="bg-orange-600 text-white text-xs font-bold px-2 py-0.5 rounded-full absolute -top-2 -right-2">${state.cart.length}</span>` : ''}
+                            </button>
+                            <button class="text-slate-300" onclick="setState({isMobileMenuOpen: !state.isMobileMenuOpen})">
+                                <i data-lucide="menu"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mobile Nav Dropdown -->
+                    ${state.isMobileMenuOpen ? `
+                        <div class="md:hidden bg-slate-800 p-4 border-t border-slate-700">
+                            <button onclick="setState({viewMode: 'shop', isMobileMenuOpen: false})" class="block w-full text-left py-2 ${state.viewMode === 'shop' ? 'text-orange-400' : 'text-slate-300'}">Shop Catalogue</button>
+                            <button onclick="setState({viewMode: 'about', isMobileMenuOpen: false})" class="block w-full text-left py-2 ${state.viewMode === 'about' ? 'text-orange-400' : 'text-slate-300'}">About Us</button>
+                            <button onclick="handleAdminClick()" class="block w-full text-left py-2 ${state.viewMode === 'admin' ? 'text-orange-400' : 'text-slate-300'}">Admin Dashboard</button>
+                        </div>
+                    ` : ''}
+                </header>
+            `;
+        }
+
+        function ShopView() {
+            // Filter logic
+            const filtered = state.products.filter(p => {
+                const term = state.searchTerm.toLowerCase();
+                const matchesSearch = 
+                    p.name.toLowerCase().includes(term) || 
+                    p.description.toLowerCase().includes(term) ||
+                    p.category.toLowerCase().includes(term);
+                const matchesCategory = state.selectedCategory === 'All' || p.category === state.selectedCategory;
+                return matchesSearch && matchesCategory;
+            });
+
+            const productsHtml = filtered.length === 0 ? `
+                <div class="flex flex-col items-center justify-center py-20 text-slate-400 col-span-full">
+                    <i data-lucide="search" class="w-12 h-12 mb-4 opacity-50"></i>
+                    <p class="text-lg">No products found.</p>
+                </div>
+            ` : filtered.map(p => {
+                const discount = calculateDiscount(p.price, p.mrp);
+                return `
+                    <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-slate-100 overflow-hidden flex flex-col group animate-fade-in">
+                        <div class="h-40 bg-slate-50 flex items-center justify-center relative overflow-hidden">
+                            ${p.image 
+                                ? `<img src="${p.image}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'">` 
+                                : ''}
+                            <div class="${p.image ? 'hidden' : 'block'} text-slate-300 group-hover:text-orange-500 transition-colors transform group-hover:scale-110 duration-300">
+                                <i data-lucide="${getCategoryIcon(p.category)}" class="w-8 h-8"></i>
+                            </div>
+                            
+                            <div class="absolute top-2 right-2 z-20 flex flex-col gap-1 items-end">
+                                ${p.stock < 5 ? '<span class="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded">Low Stock</span>' : ''}
+                                ${discount > 0 ? `<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded flex items-center gap-1"><i data-lucide="tag" class="w-3 h-3"></i> ${discount}% OFF</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="p-4 flex-1 flex flex-col">
+                            <div class="text-xs text-orange-600 font-semibold mb-1">${p.category}</div>
+                            <h3 class="font-bold text-slate-800 mb-1">${p.name}</h3>
+                            <p class="text-sm text-slate-500 line-clamp-2 mb-4 flex-1">${p.description}</p>
+                            <div class="flex justify-between items-end mt-auto pt-4 border-t border-slate-100">
+                                <div>
+                                    ${discount > 0 ? `<div class="text-xs text-slate-400 line-through">MRP: ₹${p.mrp.toFixed(2)}</div>` : ''}
+                                    <div class="text-lg font-bold text-slate-900">₹${p.price.toFixed(2)}</div>
+                                </div>
+                                <button onclick="handleAddToCart(${p.id})" class="bg-slate-900 hover:bg-orange-600 text-white p-2 rounded-lg transition-colors">
+                                    <i data-lucide="plus" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="flex min-h-screen bg-slate-100">
+                    <!-- Sidebar -->
+                    <div class="hidden md:block w-64 bg-slate-50 border-r border-slate-200 p-4 h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto">
+                        <h3 class="font-bold text-slate-700 mb-4 uppercase text-xs tracking-wider">Categories</h3>
+                        <div class="space-y-1">
+                            ${CATEGORIES.map(cat => `
+                                <button onclick="setState({selectedCategory: '${cat}'})" class="w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${state.selectedCategory === cat ? 'bg-orange-100 text-orange-700 border-l-4 border-orange-500' : 'text-slate-600 hover:bg-slate-100'}">
+                                    ${cat}
+                                </button>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="mt-8 p-4 bg-orange-50 rounded-xl border border-orange-100">
+                            <div class="flex items-center gap-2 text-orange-800 font-bold mb-2">
+                                <i data-lucide="sparkles" class="w-4 h-4 text-orange-500"></i>
+                                <span>Need Help?</span>
+                            </div>
+                            <p class="text-xs text-orange-700 mb-3">Not sure what tools you need? Ask our AI expert!</p>
+                            <button onclick="setState({isAdvisorOpen: true})" class="w-full bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold py-2 rounded shadow-sm transition-colors">
+                                ✨ Ask Expert
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Main Content -->
+                    <div class="flex-1 p-4 md:p-8">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                            <div>
+                                <h2 class="text-2xl font-bold text-slate-800">Product Catalogue</h2>
+                                <p class="text-slate-500 text-sm">Showing ${filtered.length} items in ${state.selectedCategory}</p>
+                            </div>
+                            
+                            <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                                <button onclick="setState({isAdvisorOpen: true})" class="md:hidden w-full bg-orange-500 text-white px-4 py-2 rounded-full font-bold flex items-center justify-center gap-2 shadow-sm">
+                                    <i data-lucide="sparkles" class="w-4 h-4"></i> DIY Expert
+                                </button>
+
+                                <div class="relative w-full md:w-64">
+                                    <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4"></i>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search products..." 
+                                        value="${state.searchTerm}"
+                                        oninput="setState({searchTerm: this.value, selectedCategory: this.value ? 'All' : state.selectedCategory})"
+                                        class="w-full pl-10 pr-10 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    />
+                                    ${state.searchTerm ? `<button onclick="setState({searchTerm: ''})" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>` : ''}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                            ${productsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function AdminView() {
+            return `
+                <div class="min-h-screen bg-slate-50 p-4 md:p-8">
+                    <div class="max-w-6xl mx-auto">
+                        <div class="flex justify-between items-center mb-8">
+                            <div>
+                                <h2 class="text-2xl font-bold text-slate-800">Inventory Management</h2>
+                                <p class="text-slate-500 text-sm">Manage your shop's catalogue and stock levels.</p>
+                            </div>
+                            <button onclick="setState({isEditing: true, currentProduct: null})" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded flex items-center gap-2 shadow-sm">
+                                <i data-lucide="plus" class="w-4 h-4"></i> Add Product
+                            </button>
+                        </div>
+
+                        <div class="bg-white rounded-lg shadow overflow-hidden border border-slate-200">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead class="bg-slate-100 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                                        <tr>
+                                            <th class="p-4">Image</th>
+                                            <th class="p-4">Product</th>
+                                            <th class="p-4">Category</th>
+                                            <th class="p-4">Price</th>
+                                            <th class="p-4">Stock</th>
+                                            <th class="p-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        ${state.products.map(p => {
+                                            const hasDiscount = p.mrp > p.price;
+                                            return `
+                                                <tr class="hover:bg-slate-50 transition-colors">
+                                                    <td class="p-4 w-16">
+                                                        <div class="h-10 w-10 bg-slate-100 rounded flex items-center justify-center overflow-hidden">
+                                                            ${p.image 
+                                                                ? `<img src="${p.image}" class="h-full w-full object-cover">` 
+                                                                : `<i data-lucide="image" class="text-slate-300 w-4 h-4"></i>`}
+                                                        </div>
+                                                    </td>
+                                                    <td class="p-4">
+                                                        <div class="font-medium text-slate-900">${p.name}</div>
+                                                        <div class="text-xs text-slate-500 truncate max-w-[200px]">${p.description}</div>
+                                                    </td>
+                                                    <td class="p-4"><span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">${p.category}</span></td>
+                                                    <td class="p-4">
+                                                        <div class="font-medium text-slate-900">₹${p.price.toFixed(2)}</div>
+                                                        ${hasDiscount ? `<div class="text-xs text-slate-400 line-through">MRP: ₹${p.mrp.toFixed(2)}</div>` : ''}
+                                                    </td>
+                                                    <td class="p-4">
+                                                        <div class="font-medium ${p.stock < 5 ? 'text-red-600' : 'text-green-600'}">${p.stock} units</div>
+                                                    </td>
+                                                    <td class="p-4 text-right space-x-2">
+                                                        <button class="text-slate-400 hover:text-blue-600" onclick='setState({isEditing: true, currentProduct: ${JSON.stringify(p).replace(/'/g, "&#39;")}})'>
+                                                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                        <button class="text-slate-400 hover:text-red-600" onclick="handleDeleteProduct(${p.id})">
+                                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function AboutView() {
+            return `
+                <div class="min-h-screen bg-slate-50 p-4 md:p-8">
+                    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-200">
+                        <div class="bg-slate-900 text-white p-8 md:p-12 text-center relative overflow-hidden">
+                            <div class="relative z-10">
+                                <h1 class="text-3xl md:text-4xl font-bold mb-4">Welcome to Dangi Hardware</h1>
+                                <p class="text-slate-300 text-lg max-w-2xl mx-auto">Your trusted partner for quality tools, home improvement supplies, and expert advice since 2023.</p>
+                            </div>
+                            <i data-lucide="wrench" class="absolute -bottom-10 -right-10 text-slate-800 w-64 h-64 opacity-50 rotate-45"></i>
+                        </div>
+                        
+                        <div class="p-8 md:p-12 grid md:grid-cols-2 gap-12">
+                            <div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                    <i data-lucide="info" class="text-orange-500 w-5 h-5"></i> Our Story
+                                </h3>
+                                <p class="text-slate-600 leading-relaxed mb-6">
+                                    At Dangi Hardware, we believe that every project, big or small, deserves the best tools. Founded with a passion for craftsmanship, we have grown from a small local shop to a comprehensive hardware solution provider.
+                                </p>
+                            </div>
+
+                            <div class="space-y-6">
+                                <h3 class="text-xl font-bold text-slate-800 mb-4">Contact Us</h3>
+                                <div class="flex items-start gap-4">
+                                    <div class="bg-orange-100 p-3 rounded-full text-orange-600"><i data-lucide="map-pin" class="w-5 h-5"></i></div>
+                                    <div>
+                                        <h4 class="font-bold text-slate-800">Visit Our Shop</h4>
+                                        <p class="text-slate-600">Barkagaon sayal road, Urimari</p>
+                                        <p class="text-slate-600">Sayal, Jharkhand - 825311</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-start gap-4">
+                                    <div class="bg-orange-100 p-3 rounded-full text-orange-600"><i data-lucide="phone" class="w-5 h-5"></i></div>
+                                    <div>
+                                        <h4 class="font-bold text-slate-800">Call Us</h4>
+                                        <p class="text-slate-600">+91 9931132012</p>
+                                        <p class="text-slate-600">+91 7541849759</p>
+                                        <p class="text-xs text-slate-400 mt-1">Mon - Sat, 9:00 AM - 8:00 PM</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                         <div class="bg-slate-50 p-8 border-t border-slate-200 text-center">
+                            <button onclick="setState({viewMode: 'shop'})" class="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-full transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+                                Browse Catalogue
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Overlays (Modals, Cart, Toast) ---
+
+        function NotificationToast() {
+            if (!state.notification) return '';
+            const isSuccess = state.notification.type === 'success';
+            return `
+                <div class="fixed bottom-24 right-6 px-6 py-3 rounded shadow-lg flex items-center gap-2 animate-bounce-in z-50 text-white ${isSuccess ? 'bg-green-600' : 'bg-red-600'} animate-fade-in">
+                    <i data-lucide="${isSuccess ? 'check-circle' : 'alert-circle'}" class="w-5 h-5"></i>
+                    <span>${state.notification.message}</span>
+                </div>
+            `;
+        }
+
+        function CartDrawer() {
+            if (!state.isCartOpen) return '';
+            const total = state.cart.reduce((sum, item) => sum + item.price, 0);
+
+            const itemsHtml = state.cart.length === 0 ? `
+                <div class="flex flex-col items-center justify-center h-64 text-slate-400">
+                    <i data-lucide="shopping-cart" class="w-16 h-16 mb-4 opacity-20"></i>
+                    <p>Your cart is empty.</p>
+                </div>
+            ` : state.cart.map((item, index) => `
+                <div class="flex gap-3 items-center bg-slate-50 p-3 rounded border border-slate-100">
+                    <div class="h-12 w-12 bg-white border border-slate-200 rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        ${item.image ? `<img src="${item.image}" class="h-full w-full object-cover">` : `<i data-lucide="${getCategoryIcon(item.category)}" class="text-slate-300 w-4 h-4"></i>`}
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-bold text-slate-800 text-sm">${item.name}</div>
+                        <div class="text-xs text-slate-500">₹${item.price.toFixed(2)}</div>
+                    </div>
+                    <button onclick="handleRemoveFromCart(${index})" class="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            return `
+                <div class="fixed inset-0 bg-black/50 z-50" onclick="setState({isCartOpen: false})"></div>
+                <div class="fixed top-0 right-0 h-full w-full max-w-md bg-white z-50 shadow-2xl transform transition-transform duration-300 flex flex-col animate-fade-in">
+                    <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="shopping-cart" class="text-orange-500 w-5 h-5"></i>
+                            <h3 class="font-bold text-lg">Your Cart (${state.cart.length})</h3>
+                        </div>
+                        <button onclick="setState({isCartOpen: false})" class="hover:bg-white/20 p-1 rounded">
+                            <i data-lucide="x" class="w-6 h-6"></i>
+                        </button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                        ${itemsHtml}
+                    </div>
+
+                    ${state.cart.length > 0 ? `
+                        <div class="p-4 bg-slate-50 border-t border-slate-200">
+                            <div class="flex justify-between items-center mb-4 text-lg font-bold">
+                                <span>Total:</span>
+                                <span class="text-orange-600">₹${total.toFixed(2)}</span>
+                            </div>
+                            <button onclick="handleCheckoutWhatsApp()" class="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold py-3 rounded-lg shadow flex items-center justify-center gap-2 transition-colors">
+                                <span>Checkout on WhatsApp</span>
+                                <i data-lucide="external-link" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function LoginModal() {
+            if (!state.showLoginModal) return '';
+            return `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden p-6 relative animate-fade-in">
+                        <button onclick="setState({showLoginModal: false})" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                        <div class="flex flex-col items-center mb-6 text-center">
+                            <div class="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 mb-3">
+                                <i data-lucide="lock" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="font-bold text-xl text-slate-800">Admin Access</h3>
+                            <p class="text-slate-500 text-sm">Please enter the PIN to continue.</p>
+                        </div>
+                        <div class="space-y-4">
+                            <input type="password" id="login-pin" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-center tracking-widest text-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Enter PIN">
+                            <button onclick="handleLogin(document.getElementById('login-pin').value)" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors">
+                                Unlock Dashboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function ProductForm() {
+            if (!state.isEditing) return '';
+            const p = state.currentProduct || {};
+            return `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col animate-fade-in">
+                        <div class="bg-slate-800 text-white p-4 flex justify-between items-center shrink-0">
+                            <h3 class="font-bold text-lg">${p.id ? 'Edit Product' : 'Add New Product'}</h3>
+                            <button onclick="setState({isEditing: false, currentProduct: null})" class="hover:bg-slate-700 p-1 rounded">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div class="overflow-y-auto p-6">
+                            <form onsubmit="handleSaveProduct(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Product Name</label>
+                                    <input name="name" required value="${p.name || ''}" class="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Image</label>
+                                    <div class="mb-3 flex items-center gap-4">
+                                        <div id="preview-image-div" class="h-20 w-20 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden">
+                                            ${p.image ? `<img id="preview-image-src" src="${p.image}" class="h-full w-full object-cover">` : `<i data-lucide="image" class="text-slate-300 w-6 h-6"></i>`}
+                                        </div>
+                                        <div class="flex-1 space-y-2">
+                                            <label class="flex items-center justify-center gap-2 w-full px-4 py-2 bg-white border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">
+                                                <i data-lucide="upload" class="w-4 h-4"></i> Upload
+                                                <input type="file" accept="image/*" class="hidden" onchange="handleImageUpload(this)">
+                                            </label>
+                                            <div class="text-center text-xs text-slate-400">OR use URL</div>
+                                            <input name="imageUrl" type="url" placeholder="https://..." value="${p.image || ''}" class="w-full border border-slate-300 rounded px-3 py-1 text-sm">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Selling Price</label>
+                                        <input name="price" type="number" step="0.01" required value="${p.price || ''}" class="w-full border border-slate-300 rounded px-3 py-2">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">MRP</label>
+                                        <input name="mrp" type="number" step="0.01" value="${p.mrp || ''}" class="w-full border border-slate-300 rounded px-3 py-2">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Stock</label>
+                                    <input name="stock" type="number" required value="${p.stock || ''}" class="w-full border border-slate-300 rounded px-3 py-2">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                                    <select name="category" class="w-full border border-slate-300 rounded px-3 py-2">
+                                        ${CATEGORIES.filter(c => c !== 'All').map(c => `<option value="${c}" ${p.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                    <textarea name="description" rows="3" class="w-full border border-slate-300 rounded px-3 py-2">${p.description || ''}</textarea>
+                                </div>
+
+                                <button type="submit" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded flex justify-center items-center gap-2">
+                                    <i data-lucide="save" class="w-4 h-4"></i> Save Product
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function DIYAdvisor() {
+            if (!state.isAdvisorOpen) return '';
+            return `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] animate-fade-in">
+                        <div class="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="sparkles" class="w-5 h-5 text-yellow-300"></i>
+                                <h3 class="font-bold text-lg">DIY Project Advisor</h3>
+                            </div>
+                            <button onclick="setState({isAdvisorOpen: false})" class="hover:bg-white/20 p-1 rounded">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div class="p-6 flex-1 overflow-y-auto">
+                            <div class="text-center text-slate-500 py-4">
+                                <i data-lucide="hammer" class="w-12 h-12 mx-auto mb-3 opacity-20"></i>
+                                <p>Describe your project (e.g., "Fix a leaking faucet") and I'll tell you what you need!</p>
+                            </div>
+                            <div class="flex gap-2 mt-4">
+                                <input id="diy-input" type="text" placeholder="What are you working on?" class="flex-1 border border-slate-300 rounded-lg px-4 py-2">
+                                <button onclick="alert('This feature uses an API key which needs to be configured in the code.')" class="bg-slate-800 text-white px-4 py-2 rounded-lg">Ask</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function WhatsAppFloat() {
+            return `
+                <a href="https://wa.me/${SHOP_PHONE_NUMBER}?text=Hello" target="_blank" class="fixed bottom-6 right-6 bg-[#25D366] text-white p-3 rounded-full shadow-lg hover:scale-110 transition-transform z-40 flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" class="w-8 h-8 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                </a>
+            `;
+        }
+
+        // --- Main Render Function ---
+
+        function render() {
+            const app = document.getElementById('app');
+            let mainContent = '';
+            
+            if (state.viewMode === 'shop') mainContent = ShopView();
+            else if (state.viewMode === 'admin') mainContent = AdminView();
+            else if (state.viewMode === 'about') mainContent = AboutView();
+
+            app.innerHTML = `
+                ${Header()}
+                <main class="flex-1">
+                    ${mainContent}
+                </main>
+                ${NotificationToast()}
+                ${WhatsAppFloat()}
+                ${CartDrawer()}
+                ${LoginModal()}
+                ${ProductForm()}
+                ${DIYAdvisor()}
+            `;
+
+            // Initialize Lucide Icons after DOM update
+            lucide.createIcons();
+        }
+
+        // Initial Render
+        render();
+
+    </script>
+</body>
+</html>
