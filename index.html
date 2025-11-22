@@ -364,6 +364,7 @@
                                 <div class="relative w-full md:w-64">
                                     <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4"></i>
                                     <input 
+                                        id="search-input"
                                         type="text" 
                                         placeholder="Search products..." 
                                         value="${state.searchTerm}"
@@ -718,6 +719,12 @@
         // --- Main Render Function ---
 
         function render() {
+            // 1. Capture Focus State before re-rendering
+            const activeEl = document.activeElement;
+            const focusedId = activeEl ? activeEl.id : null;
+            const cursorStart = activeEl ? activeEl.selectionStart : null;
+            const cursorEnd = activeEl ? activeEl.selectionEnd : null;
+
             const app = document.getElementById('app');
             let mainContent = '';
             
@@ -740,6 +747,18 @@
 
             // Initialize Lucide Icons after DOM update
             lucide.createIcons();
+
+            // 2. Restore Focus State after re-rendering
+            if (focusedId) {
+                const el = document.getElementById(focusedId);
+                if (el) {
+                    el.focus();
+                    // Only restore cursor for text inputs to avoid errors
+                    if (el.type === 'text' || el.type === 'search' || el.tagName === 'TEXTAREA') {
+                        el.setSelectionRange(cursorStart, cursorEnd);
+                    }
+                }
+            }
         }
 
         // Initial Render
